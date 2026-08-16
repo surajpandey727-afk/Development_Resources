@@ -1,0 +1,2919 @@
+# System Design — 30 Core Concepts + 2026 Engineering Extensions
+
+> A practical system-design reference covering the foundational concepts from **“System Design was HARD until I Learned these 30 Concepts”**, expanded with modern 2026 tools, frameworks, architectural patterns, AI systems, observability, reliability and cloud-native engineering.
+
+---
+
+## Table of Contents
+
+* [The Big Picture](#the-big-picture)
+* [System Design Mental Model](#system-design-mental-model)
+* [30 Core Concepts](#30-core-concepts)
+
+  * [1. Client–Server Architecture](#1-clientserver-architecture)
+  * [2. IP Addresses](#2-ip-addresses)
+  * [3. DNS](#3-dns)
+  * [4. Proxy & Reverse Proxy](#4-proxy--reverse-proxy)
+  * [5. Latency](#5-latency)
+  * [6. Multi-Region / Multi-Data-Centre Architecture](#6-multi-region--multi-data-centre-architecture)
+  * [7. HTTP / HTTPS](#7-http--https)
+  * [8. APIs](#8-apis)
+  * [9. REST](#9-rest)
+  * [10. GraphQL](#10-graphql)
+  * [11. Databases](#11-databases)
+  * [12. Vertical Scaling](#12-vertical-scaling)
+  * [13. Horizontal Scaling](#13-horizontal-scaling)
+  * [14. Load Balancing](#14-load-balancing)
+  * [15. Database Indexing](#15-database-indexing)
+  * [16. Database Replication](#16-database-replication)
+  * [17. Database Sharding](#17-database-sharding)
+  * [18. Vertical Partitioning](#18-vertical-partitioning)
+  * [19. Caching](#19-caching)
+  * [20. Denormalization](#20-denormalization)
+  * [21. CAP Theorem](#21-cap-theorem)
+  * [22. Blob/Object Storage](#22-blobobject-storage)
+  * [23. CDN](#23-cdn)
+  * [24. WebSockets](#24-websockets)
+  * [25. Webhooks](#25-webhooks)
+  * [26. Microservices](#26-microservices)
+  * [27. Message Queues](#27-message-queues)
+  * [28. Rate Limiting](#28-rate-limiting)
+  * [29. API Gateway](#29-api-gateway)
+  * [30. Idempotency](#30-idempotency)
+* [How Everything Connects](#how-everything-connects)
+* [Modern 2026 Extensions](#modern-2026-extensions)
+* [2026 Tool & Framework Map](#2026-tool--framework-map)
+* [Architecture Patterns](#architecture-patterns)
+* [Reliability Engineering](#reliability-engineering)
+* [AI / Agent System Design](#ai--agent-system-design)
+* [Security](#security)
+* [Data Architecture](#data-architecture)
+* [Observability](#observability)
+* [Scaling Decision Tree](#scaling-decision-tree)
+* [MVP → Production Evolution](#mvp--production-evolution)
+* [System Design Checklist](#system-design-checklist)
+
+---
+
+# The Big Picture
+
+System design is fundamentally about answering:
+
+> **How do we build a system that remains correct, fast, reliable, secure and maintainable as users, data and traffic grow?**
+
+A simple application might look like:
+
+```mermaid
+flowchart LR
+    U[User] --> C[Client]
+    C --> S[Server]
+    S --> DB[(Database)]
+```
+
+A production system becomes:
+
+```mermaid
+flowchart LR
+    U[User] --> DNS[DNS]
+    DNS --> CDN[CDN]
+    CDN --> RP[Reverse Proxy]
+    RP --> LB[Load Balancer]
+
+    LB --> API1[API Server]
+    LB --> API2[API Server]
+    LB --> API3[API Server]
+
+    API1 --> CACHE[(Redis Cache)]
+    API2 --> CACHE
+    API3 --> CACHE
+
+    API1 --> DB[(Primary DB)]
+    API2 --> DB
+    API3 --> DB
+
+    DB --> R1[(Read Replica)]
+    DB --> R2[(Read Replica)]
+
+    API1 --> Q[Message Queue]
+    Q --> W[Workers]
+
+    W --> OBJ[(Object Storage)]
+```
+
+The key lesson:
+
+> **Don't start with technologies. Start with requirements, traffic, data, failure modes and constraints.**
+
+---
+
+# System Design Mental Model
+
+Think about a system in layers:
+
+```mermaid
+flowchart TD
+    A[Users / Clients]
+    B[Networking]
+    C[Edge]
+    D[Application]
+    E[Async Processing]
+    F[Data]
+    G[Storage]
+    H[Observability]
+    I[Security]
+
+    A --> B
+    B --> C
+    C --> D
+    D --> E
+    D --> F
+    E --> F
+    F --> G
+
+    H -.-> B
+    H -.-> C
+    H -.-> D
+    H -.-> E
+    H -.-> F
+
+    I -.-> B
+    I -.-> C
+    I -.-> D
+    I -.-> F
+```
+
+For every component ask:
+
+1. What does it do?
+2. Why do we need it?
+3. What happens if it fails?
+4. How does it scale?
+5. How much does it cost?
+6. How is it monitored?
+7. How is it secured?
+8. Can we replace it later?
+
+---
+
+# 30 Core Concepts
+
+## 1. Client–Server Architecture
+
+The client is the consumer of a service.
+
+Examples:
+
+* Web browser
+* Mobile application
+* Desktop application
+* CLI
+* Another backend
+
+The server continuously waits for requests, processes them and returns responses.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant S as Server
+    participant DB as Database
+
+    C->>S: Request
+    S->>DB: Query
+    DB-->>S: Data
+    S-->>C: Response
+```
+
+### Example
+
+```text
+Browser
+   ↓
+GET /users/123
+   ↓
+Backend
+   ↓
+Database
+   ↓
+JSON response
+```
+
+### 2026 examples
+
+* Next.js frontend → API
+* React Native → FastAPI
+* Angular → NestJS
+* Mobile app → ASP.NET Core
+* Python client → FastAPI
+* AI agent → tool API
+
+---
+
+# 2. IP Addresses
+
+Machines communicate over networks using IP addresses.
+
+Example:
+
+```text
+203.0.113.10
+```
+
+IPv4:
+
+```text
+192.168.1.10
+```
+
+IPv6:
+
+```text
+2001:db8::1
+```
+
+The important system-design principle:
+
+> Clients need a network address to communicate with a service.
+
+Modern systems generally hide infrastructure IPs behind:
+
+* DNS
+* Load balancers
+* Reverse proxies
+* CDNs
+* API gateways
+* Service meshes
+
+---
+
+# 3. DNS
+
+DNS maps human-readable domains to network destinations.
+
+```text
+example.com
+     ↓
+DNS
+     ↓
+IP / endpoint
+     ↓
+Server
+```
+
+Typical flow:
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant D as DNS
+    participant S as Server
+
+    B->>D: Resolve example.com
+    D-->>B: IP address
+    B->>S: HTTPS request
+    S-->>B: Response
+```
+
+### 2026 tools
+
+* Cloudflare DNS
+* AWS Route 53
+* Azure DNS
+* Google Cloud DNS
+* CoreDNS in Kubernetes
+
+DNS can also support:
+
+* Failover
+* Geo-routing
+* Traffic steering
+* Multi-region architecture
+
+---
+
+# 4. Proxy & Reverse Proxy
+
+A proxy sits between the client and the internet.
+
+A reverse proxy sits between clients and backend services.
+
+```mermaid
+flowchart LR
+    C[Client] --> RP[Reverse Proxy]
+    RP --> A1[Backend 1]
+    RP --> A2[Backend 2]
+    RP --> A3[Backend 3]
+```
+
+Common reverse-proxy responsibilities:
+
+* Routing
+* TLS termination
+* Authentication
+* Compression
+* Caching
+* Rate limiting
+* Load balancing
+* Security filtering
+
+### Examples
+
+* NGINX
+* HAProxy
+* Envoy
+* Traefik
+* Caddy
+* Cloudflare
+* AWS Application Load Balancer
+
+---
+
+# 5. Latency
+
+Latency is the delay between sending a request and receiving a response.
+
+Example:
+
+```text
+UK User
+   ↓
+US Server
+   ↓
+US Database
+   ↓
+US Server
+   ↓
+UK User
+```
+
+This can be significantly slower than:
+
+```text
+UK User
+   ↓
+UK/European Server
+   ↓
+European Database
+   ↓
+UK User
+```
+
+### Important latency sources
+
+* Geographic distance
+* Network congestion
+* DNS resolution
+* TLS handshake
+* Backend processing
+* Database queries
+* Cache misses
+* External APIs
+* Queue delays
+* Cold starts
+
+### Think in percentiles
+
+Don't only measure:
+
+```text
+Average latency = 100 ms
+```
+
+Measure:
+
+```text
+p50 = 70 ms
+p95 = 180 ms
+p99 = 800 ms
+```
+
+Tail latency often determines the real user experience.
+
+---
+
+# 6. Multi-Region / Multi-Data-Centre Architecture
+
+Deploying systems in multiple geographic locations reduces latency and can improve availability.
+
+```mermaid
+flowchart TD
+    U[Global Users]
+
+    U --> DNS[Global Traffic Manager]
+
+    DNS --> US[US Region]
+    DNS --> EU[EU Region]
+    DNS --> APAC[APAC Region]
+
+    US --> USDB[(US DB)]
+    EU --> EUDB[(EU DB)]
+    APAC --> APDB[(APAC DB)]
+```
+
+### Examples
+
+* AWS regions
+* Azure regions
+* Google Cloud regions
+* Cloudflare edge
+* Kubernetes clusters across regions
+
+### Trade-off
+
+Multi-region introduces complexity:
+
+* Replication
+* Data consistency
+* Failover
+* Conflict resolution
+* Operational cost
+* Deployment coordination
+
+---
+
+# 7. HTTP / HTTPS
+
+HTTP is the fundamental request/response protocol used by web systems.
+
+Typical request:
+
+```http
+GET /users/123
+Authorization: Bearer ...
+Accept: application/json
+```
+
+Response:
+
+```http
+200 OK
+Content-Type: application/json
+```
+
+HTTPS adds encryption through TLS.
+
+```text
+HTTP
++
+TLS
+=
+HTTPS
+```
+
+### Important concepts
+
+* Methods
+* Headers
+* Status codes
+* Cookies
+* Request body
+* Response body
+* TLS
+* Connection reuse
+* HTTP/2
+* HTTP/3
+
+---
+
+# 8. APIs
+
+An API provides a contract through which systems communicate.
+
+```text
+Client
+   ↓
+API
+   ↓
+Business Logic
+   ↓
+Database / Services
+```
+
+Common API styles:
+
+* REST
+* GraphQL
+* gRPC
+* WebSockets
+* Webhooks
+* Async messaging
+* Event APIs
+
+### Good API design
+
+Define:
+
+```text
+Input
+↓
+Validation
+↓
+Authentication
+↓
+Authorization
+↓
+Business logic
+↓
+Persistence
+↓
+Response
+```
+
+---
+
+# 9. REST
+
+REST treats data as resources.
+
+Example:
+
+```http
+GET    /users
+GET    /users/123
+POST   /users
+PUT    /users/123
+DELETE /users/123
+```
+
+Characteristics:
+
+* Resource-oriented
+* HTTP-based
+* Stateless
+* Cache-friendly
+* Simple to understand
+
+### Strengths
+
+* Easy to debug
+* Widely supported
+* Good tooling
+* Easy browser integration
+* Good for public APIs
+
+### Weaknesses
+
+* Over-fetching
+* Under-fetching
+* Multiple requests
+* Versioning challenges
+
+---
+
+# 10. GraphQL
+
+GraphQL allows clients to request exactly the fields they need.
+
+REST:
+
+```text
+GET /users/123
+GET /users/123/orders
+GET /users/123/preferences
+```
+
+GraphQL:
+
+```graphql
+query {
+  user(id: "123") {
+    name
+    email
+    orders {
+      id
+      total
+    }
+  }
+}
+```
+
+### Strengths
+
+* Flexible queries
+* Strong schema
+* Good frontend experience
+* Avoids some over-fetching
+
+### Weaknesses
+
+* More server complexity
+* Query-cost control
+* Caching complexity
+* Authorization complexity
+
+---
+
+# 11. Databases
+
+Databases provide durable storage and efficient data access.
+
+## SQL
+
+Examples:
+
+* PostgreSQL
+* MySQL
+* SQL Server
+* Oracle
+
+Good for:
+
+* Relationships
+* Transactions
+* Structured data
+* Strong consistency
+* Financial systems
+
+Example:
+
+```sql
+SELECT *
+FROM users
+WHERE id = 123;
+```
+
+## NoSQL
+
+Categories include:
+
+### Key-value
+
+* Redis
+* DynamoDB
+
+### Document
+
+* MongoDB
+* Couchbase
+
+### Wide-column
+
+* Cassandra
+* ScyllaDB
+
+### Graph
+
+* Neo4j
+* Amazon Neptune
+
+### Important rule
+
+Don't think:
+
+> SQL = good, NoSQL = scalable.
+
+Instead ask:
+
+> What data model, consistency model, query pattern and scale does the application require?
+
+---
+
+# 12. Vertical Scaling
+
+Scaling up means making one machine more powerful.
+
+```text
+4 CPU
+↓
+16 CPU
+↓
+64 CPU
+```
+
+Advantages:
+
+* Simple
+* Minimal architecture change
+* Easy operationally
+
+Disadvantages:
+
+* Hardware limit
+* Expensive
+* Single point of failure
+* Limited long-term scalability
+
+---
+
+# 13. Horizontal Scaling
+
+Scaling out means adding more machines.
+
+```mermaid
+flowchart LR
+    LB[Load Balancer]
+
+    LB --> S1[Server]
+    LB --> S2[Server]
+    LB --> S3[Server]
+    LB --> S4[Server]
+```
+
+Advantages:
+
+* More capacity
+* Better availability
+* Fault tolerance
+* Elasticity
+
+But horizontal scaling requires:
+
+* Stateless services
+* Shared/session storage strategy
+* Load balancing
+* Distributed locking where necessary
+* Data scaling
+
+---
+
+# 14. Load Balancing
+
+A load balancer distributes traffic across servers.
+
+Algorithms include:
+
+* Round robin
+* Weighted round robin
+* Least connections
+* IP hashing
+* Consistent hashing
+* Latency-based routing
+
+```mermaid
+flowchart TD
+    C[Clients] --> LB[Load Balancer]
+
+    LB --> A[API A]
+    LB --> B[API B]
+    LB --> C2[API C]
+
+    A --> DB[(Database)]
+    B --> DB
+    C2 --> DB
+```
+
+It can also perform:
+
+* Health checks
+* TLS termination
+* Routing
+* Failover
+* Connection management
+
+---
+
+# 15. Database Indexing
+
+An index allows a database to find data without scanning every row.
+
+Without index:
+
+```text
+Row 1
+Row 2
+Row 3
+...
+Row 1,000,000
+```
+
+With index:
+
+```text
+user_id → row location
+```
+
+Example:
+
+```sql
+CREATE INDEX idx_users_email
+ON users(email);
+```
+
+### Trade-off
+
+Indexes:
+
+```text
+READ PERFORMANCE ↑
+WRITE COST ↑
+STORAGE ↑
+```
+
+Don't index everything.
+
+Index according to actual query patterns.
+
+---
+
+# 16. Database Replication
+
+Replication creates copies of data.
+
+Common model:
+
+```mermaid
+flowchart LR
+    W[Writes] --> P[(Primary)]
+    P --> R1[(Read Replica)]
+    P --> R2[(Read Replica)]
+    P --> R3[(Read Replica)]
+
+    Q[Read Requests] --> R1
+    Q --> R2
+    Q --> R3
+```
+
+Benefits:
+
+* Read scaling
+* Availability
+* Disaster recovery
+
+Important issue:
+
+> Replicas may lag behind the primary.
+
+Therefore:
+
+```text
+Write → Primary
+Read immediately → Primary
+Later read → Replica
+```
+
+may produce different results.
+
+---
+
+# 17. Database Sharding
+
+Sharding splits data across multiple database nodes.
+
+Example:
+
+```text
+Users 1–1M       → Shard A
+Users 1M–2M      → Shard B
+Users 2M–3M      → Shard C
+```
+
+Or:
+
+```text
+hash(user_id) % N
+```
+
+### Benefits
+
+* More storage capacity
+* More write capacity
+* Distributed workload
+
+### Problems
+
+* Cross-shard queries
+* Rebalancing
+* Hot shards
+* Transactions
+* Operational complexity
+
+Sharding should usually come **after** simpler scaling techniques have been exhausted.
+
+---
+
+# 18. Vertical Partitioning
+
+Vertical partitioning splits columns.
+
+Instead of:
+
+```text
+Users
+├── profile
+├── authentication
+├── billing
+├── preferences
+├── analytics
+└── history
+```
+
+create:
+
+```text
+users
+user_auth
+user_billing
+user_preferences
+user_history
+```
+
+Useful when:
+
+* Tables become very wide
+* Certain columns are rarely accessed
+* Different access patterns exist
+
+---
+
+# 19. Caching
+
+Caching stores frequently accessed data in faster storage.
+
+```mermaid
+flowchart LR
+    C[Client] --> API[API]
+
+    API --> CACHE[(Cache)]
+
+    CACHE -->|Hit| API
+    CACHE -->|Miss| DB[(Database)]
+
+    DB --> CACHE
+```
+
+Common strategy:
+
+## Cache-aside
+
+```text
+1. Check cache
+2. Cache hit → return
+3. Cache miss → query DB
+4. Store result in cache
+5. Return result
+```
+
+Common tools:
+
+* Redis
+* Memcached
+* Cloudflare Cache
+* CDN caching
+* Application-level caches
+
+### Important cache concepts
+
+* TTL
+* Cache invalidation
+* Eviction
+* Cache warming
+* Cache stampede
+* Cache penetration
+* Cache consistency
+
+---
+
+# 20. Denormalization
+
+Normalization reduces duplication.
+
+Denormalization intentionally duplicates data to improve read performance.
+
+Normalized:
+
+```text
+Users
+Orders
+Products
+```
+
+Denormalized:
+
+```text
+UserOrders
+├── user_name
+├── order_id
+├── product_name
+└── order_total
+```
+
+Advantages:
+
+* Faster reads
+* Fewer joins
+* Better read scalability
+
+Disadvantages:
+
+* More storage
+* Duplicate data
+* Update complexity
+* Consistency challenges
+
+---
+
+# 21. CAP Theorem
+
+CAP concerns distributed systems.
+
+The three properties are:
+
+```text
+C = Consistency
+A = Availability
+P = Partition Tolerance
+```
+
+The core idea:
+
+> When a network partition occurs, a distributed system has to make a trade-off between consistency and availability.
+
+```mermaid
+graph TD
+    C[Consistency]
+    A[Availability]
+    P[Partition Tolerance]
+
+    C --- A
+    A --- P
+    P --- C
+```
+
+In real distributed systems, partition tolerance is generally unavoidable.
+
+Therefore the practical question becomes:
+
+```text
+During a network partition:
+
+Prefer consistency?
+OR
+Prefer availability?
+```
+
+---
+
+# 22. Blob / Object Storage
+
+Databases aren't usually the best place for large binary files.
+
+Use object storage for:
+
+* Images
+* Videos
+* PDFs
+* Audio
+* Backups
+* Large datasets
+* ML artifacts
+
+Examples:
+
+* Amazon S3
+* Azure Blob Storage
+* Google Cloud Storage
+* Cloudflare R2
+* MinIO
+
+Architecture:
+
+```mermaid
+flowchart LR
+    U[User] --> API[API]
+    API --> URL[Signed Upload URL]
+    URL --> OBJ[(Object Storage)]
+```
+
+The backend doesn't need to stream every large file through itself.
+
+---
+
+# 23. CDN
+
+A CDN caches content near users.
+
+```mermaid
+flowchart TD
+    U1[UK User] --> EU[EU Edge]
+    U2[US User] --> US[US Edge]
+    U3[India User] --> IN[India Edge]
+
+    EU --> ORIGIN[Origin]
+    US --> ORIGIN
+    IN --> ORIGIN
+```
+
+Useful for:
+
+* Images
+* JavaScript
+* CSS
+* Video
+* Static HTML
+* Downloadable files
+
+Examples:
+
+* Cloudflare
+* AWS CloudFront
+* Azure Front Door
+* Fastly
+
+---
+
+# 24. WebSockets
+
+HTTP:
+
+```text
+Request → Response
+```
+
+WebSocket:
+
+```text
+Client ←→ Persistent Connection ←→ Server
+```
+
+Useful for:
+
+* Chat
+* Multiplayer games
+* Live dashboards
+* Collaboration
+* Notifications
+* Trading interfaces
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant S as Server
+
+    C->>S: WebSocket handshake
+    S-->>C: Connection established
+
+    S-->>C: Event 1
+    C-->>S: Event 2
+    S-->>C: Event 3
+```
+
+---
+
+# 25. Webhooks
+
+Webhooks are event-driven callbacks.
+
+Instead of:
+
+```text
+Your app → "Did payment complete?"
+Your app → "Did payment complete?"
+Your app → "Did payment complete?"
+```
+
+The provider calls your system:
+
+```text
+Payment completed
+       ↓
+POST /webhooks/payment
+       ↓
+Your application
+```
+
+Examples:
+
+* Stripe
+* GitHub
+* Shopify
+* Slack
+* Microsoft Graph
+* HubSpot
+
+### Must-have webhook features
+
+* Signature verification
+* Idempotency
+* Retry handling
+* Event IDs
+* Dead-letter handling
+* Logging
+* Replay capability
+
+---
+
+# 26. Microservices
+
+A monolith:
+
+```mermaid
+flowchart LR
+    Client --> MONO[Large Application]
+    MONO --> DB[(Database)]
+```
+
+Microservices:
+
+```mermaid
+flowchart LR
+    Client --> Gateway[API Gateway]
+
+    Gateway --> User[User Service]
+    Gateway --> Order[Order Service]
+    Gateway --> Payment[Payment Service]
+    Gateway --> Notification[Notification Service]
+
+    User --> UDB[(User DB)]
+    Order --> ODB[(Order DB)]
+    Payment --> PDB[(Payment DB)]
+```
+
+Benefits:
+
+* Independent deployment
+* Independent scaling
+* Team ownership
+* Fault isolation
+
+Costs:
+
+* Network failures
+* Distributed transactions
+* Observability complexity
+* Deployment complexity
+* Data consistency
+* Debugging difficulty
+
+### Important 2026 principle
+
+> **Do not use microservices simply because the system is "modern".**
+
+For an MVP, a modular monolith is often better.
+
+---
+
+# 27. Message Queues
+
+Queues allow asynchronous processing.
+
+```mermaid
+flowchart LR
+    P[Producer] --> Q[(Queue)]
+    Q --> W1[Worker]
+    Q --> W2[Worker]
+    Q --> W3[Worker]
+```
+
+Instead of:
+
+```text
+Request
+ ↓
+Do 20 expensive operations
+ ↓
+Response
+```
+
+Use:
+
+```text
+Request
+ ↓
+Create Job
+ ↓
+Queue
+ ↓
+Worker
+ ↓
+Process
+```
+
+Examples:
+
+* Kafka
+* RabbitMQ
+* Amazon SQS
+* Azure Service Bus
+* Google Pub/Sub
+* NATS
+* Redis Streams
+
+---
+
+# 28. Rate Limiting
+
+Rate limiting protects systems from excessive traffic.
+
+Example:
+
+```text
+100 requests / minute / user
+```
+
+Algorithms:
+
+### Fixed Window
+
+```text
+00:00 → 00:59
+100 requests
+```
+
+### Sliding Window
+
+Continuously evaluates the recent period.
+
+### Token Bucket
+
+Tokens accumulate over time.
+
+```mermaid
+flowchart LR
+    R[Requests] --> RL[Rate Limiter]
+
+    RL -->|Allowed| API[API]
+    RL -->|Rejected| X[429 Too Many Requests]
+```
+
+Rate limiting protects against:
+
+* Abuse
+* Bots
+* Accidental overload
+* DDoS-like application traffic
+* Expensive API usage
+
+---
+
+# 29. API Gateway
+
+An API gateway provides a central entry point.
+
+```mermaid
+flowchart TD
+    Client --> Gateway[API Gateway]
+
+    Gateway --> Auth[Authentication]
+    Gateway --> Rate[Rate Limiting]
+    Gateway --> Routing[Routing]
+
+    Routing --> A[Service A]
+    Routing --> B[Service B]
+    Routing --> C[Service C]
+```
+
+Responsibilities can include:
+
+* Authentication
+* Authorization
+* Rate limiting
+* Routing
+* Logging
+* Metrics
+* Request transformation
+* TLS
+* API versioning
+
+Examples:
+
+* Kong
+* Envoy Gateway
+* AWS API Gateway
+* Azure API Management
+* Google API Gateway
+* Traefik
+
+---
+
+# 30. Idempotency
+
+An operation is idempotent when repeating it produces the same intended result.
+
+This matters enormously in distributed systems.
+
+Example:
+
+```text
+POST /payments
+Idempotency-Key: abc123
+```
+
+First request:
+
+```text
+abc123 → payment created
+```
+
+Retry:
+
+```text
+abc123 → return existing payment
+```
+
+Instead of:
+
+```text
+Payment 1
+Payment 2
+Payment 3
+```
+
+### Critical for
+
+* Payments
+* Orders
+* Webhooks
+* Job submission
+* File processing
+* Distributed retries
+
+---
+
+# How Everything Connects
+
+A realistic system can combine almost every concept:
+
+```mermaid
+flowchart TD
+
+    USER[User]
+
+    USER --> DNS[DNS]
+    DNS --> CDN[CDN / Edge]
+
+    CDN --> WAF[WAF / Security]
+    WAF --> LB[Load Balancer]
+
+    LB --> GW[API Gateway]
+
+    GW --> API1[API Server 1]
+    GW --> API2[API Server 2]
+    GW --> API3[API Server 3]
+
+    API1 --> CACHE[(Redis)]
+    API2 --> CACHE
+    API3 --> CACHE
+
+    API1 --> DB[(Primary PostgreSQL)]
+    API2 --> DB
+    API3 --> DB
+
+    DB --> R1[(Read Replica)]
+    DB --> R2[(Read Replica)]
+
+    API1 --> QUEUE[Message Queue]
+    API2 --> QUEUE
+    API3 --> QUEUE
+
+    QUEUE --> WORKER1[Worker]
+    QUEUE --> WORKER2[Worker]
+
+    WORKER1 --> OBJ[(Object Storage)]
+    WORKER2 --> OBJ
+
+    API1 --> EXT[External APIs]
+```
+
+---
+
+# Modern 2026 Extensions
+
+The original 30 concepts remain fundamental, but production architecture in 2026 adds several important concepts.
+
+---
+
+## 31. Containers
+
+Package applications with their dependencies.
+
+```text
+Application
++
+Dependencies
++
+Runtime
+=
+Container
+```
+
+Tools:
+
+* Docker
+* Podman
+* BuildKit
+* containerd
+
+---
+
+# 32. Kubernetes
+
+Kubernetes automates deployment, scaling and management of containerized workloads.
+
+```mermaid
+flowchart TD
+    K[Kubernetes Cluster]
+
+    K --> N1[Node]
+    K --> N2[Node]
+    K --> N3[Node]
+
+    N1 --> P1[Pod]
+    N1 --> P2[Pod]
+    N2 --> P3[Pod]
+    N3 --> P4[Pod]
+```
+
+Important concepts:
+
+* Pods
+* Deployments
+* Services
+* Ingress
+* ConfigMaps
+* Secrets
+* Horizontal Pod Autoscaler
+* StatefulSets
+* Jobs
+* CronJobs
+
+Don't automatically choose Kubernetes.
+
+For small products:
+
+```text
+Cloud Run
+Azure Container Apps
+AWS ECS
+Fly.io
+Render
+Railway
+```
+
+may be significantly simpler.
+
+---
+
+# 33. Infrastructure as Code
+
+Infrastructure should become reproducible code.
+
+Examples:
+
+* Terraform
+* OpenTofu
+* Pulumi
+* AWS CDK
+* Azure Bicep
+
+Instead of manually creating:
+
+```text
+Database
+Server
+Network
+Queue
+Storage
+```
+
+define:
+
+```text
+infrastructure/
+├── network.tf
+├── database.tf
+├── storage.tf
+├── queue.tf
+└── monitoring.tf
+```
+
+---
+
+# 34. CI/CD
+
+Code should move predictably from development to production.
+
+```mermaid
+flowchart LR
+    DEV[Developer] --> GIT[Git]
+    GIT --> CI[CI]
+    CI --> TEST[Test]
+    TEST --> BUILD[Build]
+    BUILD --> SECURITY[Security Scan]
+    SECURITY --> DEPLOY[Deploy]
+    DEPLOY --> PROD[Production]
+    PROD --> MONITOR[Monitoring]
+```
+
+Examples:
+
+* GitHub Actions
+* GitLab CI
+* Azure DevOps
+* Argo CD
+* Flux
+
+---
+
+# 35. Observability
+
+Modern systems cannot rely on logs alone.
+
+Observability normally includes:
+
+```text
+Logs
+Metrics
+Traces
+```
+
+OpenTelemetry is a vendor-neutral framework for generating, collecting and exporting telemetry, including traces, metrics and logs.
+
+```mermaid
+flowchart TD
+    APP[Application]
+
+    APP --> LOGS[Logs]
+    APP --> METRICS[Metrics]
+    APP --> TRACES[Traces]
+
+    LOGS --> OTEL[OpenTelemetry]
+    METRICS --> OTEL
+    TRACES --> OTEL
+
+    OTEL --> BACKEND[Observability Backend]
+```
+
+Common stack:
+
+```text
+OpenTelemetry
++
+Prometheus
++
+Grafana
++
+Loki
++
+Tempo / Jaeger
+```
+
+OpenTelemetry also supports context propagation and increasingly broader telemetry signals.
+
+---
+
+# 36. SLI / SLO / SLA
+
+### SLI
+
+What do we measure?
+
+Example:
+
+```text
+Request latency
+```
+
+### SLO
+
+What target do we want?
+
+```text
+99% of requests < 300 ms
+```
+
+### SLA
+
+What contractual promise do we make?
+
+```text
+99.9% monthly availability
+```
+
+Think:
+
+```text
+SLI → Measurement
+SLO → Engineering Target
+SLA → Customer Contract
+```
+
+---
+
+# 37. Circuit Breakers
+
+Suppose:
+
+```text
+API → Payment Service
+```
+
+Payment service fails.
+
+Without protection:
+
+```text
+1000 requests
+↓
+1000 failing calls
+↓
+More retries
+↓
+More load
+↓
+Payment service gets worse
+↓
+Everything gets worse
+```
+
+Circuit breaker:
+
+```mermaid
+flowchart LR
+    API[API] --> CB[Circuit Breaker]
+
+    CB -->|Healthy| PAYMENT[Payment Service]
+    CB -->|Failing| FALLBACK[Fallback]
+```
+
+States:
+
+```text
+CLOSED
+  ↓
+OPEN
+  ↓
+HALF-OPEN
+  ↓
+CLOSED
+```
+
+---
+
+# 38. Retries + Backoff + Jitter
+
+Never blindly retry immediately.
+
+Bad:
+
+```text
+retry
+retry
+retry
+retry
+retry
+```
+
+Better:
+
+```text
+1s
+2s
+4s
+8s
+```
+
+Add jitter:
+
+```text
+2s ± random
+```
+
+This prevents thousands of services from retrying simultaneously.
+
+---
+
+# 39. Dead Letter Queues
+
+What happens when a message repeatedly fails?
+
+```mermaid
+flowchart LR
+    Q[Queue] --> W[Worker]
+
+    W -->|Success| DONE[Completed]
+    W -->|Failure| RETRY[Retry]
+
+    RETRY --> W
+    RETRY -->|Too many failures| DLQ[Dead Letter Queue]
+```
+
+DLQs are essential for production event processing.
+
+---
+
+# 40. Event-Driven Architecture
+
+Instead of:
+
+```text
+Order Service
+   ↓
+Payment Service
+   ↓
+Email Service
+   ↓
+Analytics
+```
+
+publish an event:
+
+```text
+OrderCreated
+```
+
+Consumers independently react:
+
+```mermaid
+flowchart LR
+    O[Order Service] --> E[OrderCreated Event]
+
+    E --> P[Payment]
+    E --> N[Notifications]
+    E --> A[Analytics]
+    E --> F[Fulfilment]
+```
+
+Tools:
+
+* Kafka
+* Redpanda
+* NATS
+* Pulsar
+* AWS EventBridge
+* Azure Event Grid
+* Google Pub/Sub
+
+---
+
+# 41. Eventual Consistency
+
+Not every component needs immediate consistency.
+
+Example:
+
+```text
+Payment database
+      ↓
+Event
+      ↓
+Analytics
+```
+
+Analytics may update:
+
+```text
+within seconds
+```
+
+rather than:
+
+```text
+within milliseconds
+```
+
+Ask:
+
+> Does this business operation actually require strong consistency?
+
+---
+
+# 42. Distributed Transactions
+
+Traditional:
+
+```text
+BEGIN
+A
+B
+C
+COMMIT
+```
+
+Across services, this becomes difficult.
+
+Common patterns:
+
+* Saga
+* Outbox pattern
+* Event-driven workflows
+* Compensating transactions
+
+Example:
+
+```mermaid
+flowchart LR
+    O[Create Order]
+    P[Reserve Payment]
+    I[Reserve Inventory]
+    S[Ship]
+
+    O --> P
+    P --> I
+    I --> S
+
+    I -.failure.-> CP[Compensate Payment]
+```
+
+---
+
+# 43. Transactional Outbox
+
+One of the most useful patterns for reliable event publishing.
+
+Problem:
+
+```text
+Write DB
+   ↓
+Publish Event
+```
+
+What if the DB succeeds but event publishing fails?
+
+Solution:
+
+```mermaid
+flowchart LR
+    APP[Application] --> DB[(Database)]
+
+    DB --> OUTBOX[(Outbox Table)]
+
+    OUTBOX --> RELAY[Event Relay]
+    RELAY --> BUS[Message Broker]
+```
+
+Database transaction contains:
+
+```text
+Business data
++
+Outbox event
+```
+
+Then the event is safely published later.
+
+---
+
+# 44. Distributed Locks
+
+Sometimes only one worker should perform an operation.
+
+Examples:
+
+* Scheduled jobs
+* Resource allocation
+* Inventory
+* Leader election
+
+Tools/patterns:
+
+* Redis locks
+* PostgreSQL advisory locks
+* etcd
+* ZooKeeper
+* Kubernetes Lease
+
+Be extremely careful with distributed locks.
+
+Often a better solution is:
+
+> Make the operation idempotent.
+
+---
+
+# 45. Durable Execution
+
+Modern distributed applications increasingly need workflows that survive crashes and outages.
+
+Temporal provides durable execution where workflow state can survive process crashes, network failures and infrastructure outages.
+
+Example:
+
+```mermaid
+flowchart LR
+    START[Start Workflow]
+    START --> A[Call API]
+    A --> B[Wait]
+    B --> C[Human Approval]
+    C --> D[Process]
+    D --> E[Complete]
+```
+
+If the worker crashes between C and D:
+
+```text
+Workflow state survives
+        ↓
+Worker restarts
+        ↓
+Workflow resumes
+```
+
+This is particularly useful for:
+
+* Payments
+* Order processing
+* Onboarding
+* Data pipelines
+* AI agents
+* Human approval workflows
+* Long-running jobs
+
+---
+
+# AI / Agent System Design
+
+2026 system design must also account for AI workloads.
+
+A modern AI system looks more like:
+
+```mermaid
+flowchart TD
+    USER[User] --> API[API]
+
+    API --> AUTH[Auth]
+    API --> ORCH[Agent Orchestrator]
+
+    ORCH --> LLM[LLM]
+    ORCH --> TOOLS[Tools]
+    ORCH --> RAG[RAG]
+    ORCH --> MEMORY[Memory]
+
+    RAG --> EMB[Embeddings]
+    EMB --> VECTOR[(Vector DB)]
+
+    TOOLS --> EXT[External APIs]
+
+    ORCH --> CACHE[(LLM Cache)]
+    ORCH --> QUEUE[Async Queue]
+
+    QUEUE --> WORKERS[Workers]
+
+    ORCH --> TRACE[Tracing / Evaluation]
+```
+
+---
+
+# AI System Design Concepts
+
+## LLM Gateway
+
+Centralise:
+
+* Model routing
+* Authentication
+* Rate limits
+* Cost tracking
+* Fallbacks
+* Observability
+* Model selection
+
+Examples:
+
+* LiteLLM
+* Portkey
+* OpenRouter
+* Azure AI Foundry
+* Amazon Bedrock
+* Google Vertex AI
+
+---
+
+## Model Routing
+
+Instead of:
+
+```text
+Everything → expensive model
+```
+
+use:
+
+```mermaid
+flowchart TD
+    REQUEST[Request] --> ROUTER[Model Router]
+
+    ROUTER --> CHEAP[Fast / Cheap Model]
+    ROUTER --> POWERFUL[Reasoning Model]
+    ROUTER --> SPECIAL[Specialist Model]
+```
+
+Routing criteria:
+
+* Cost
+* Latency
+* Context length
+* Capability
+* Privacy
+* Reliability
+
+---
+
+# RAG
+
+Retrieval-Augmented Generation:
+
+```mermaid
+flowchart LR
+    Q[User Question] --> E[Embedding]
+    E --> V[(Vector Database)]
+
+    V --> R[Relevant Chunks]
+    R --> LLM[LLM]
+
+    Q --> LLM
+    LLM --> ANSWER[Answer]
+```
+
+Tools:
+
+* pgvector
+* Qdrant
+* Weaviate
+* Milvus
+* Pinecone
+* Elasticsearch / OpenSearch
+* Neo4j
+
+For many MVPs, PostgreSQL + `pgvector` is an excellent starting point rather than immediately introducing a separate vector database.
+
+---
+
+# AI Evaluation
+
+A production AI system needs evaluation.
+
+Measure:
+
+```text
+Accuracy
+Groundedness
+Hallucination rate
+Latency
+Cost
+Tool success rate
+Task completion
+User satisfaction
+```
+
+Tools/frameworks worth evaluating in 2026:
+
+* OpenAI evaluation tooling
+* LangSmith
+* Arize Phoenix
+* Braintrust
+* DeepEval
+* Ragas
+* MLflow
+* Weights & Biases
+
+---
+
+# AI Agent Reliability
+
+Agents introduce additional failure modes:
+
+```text
+LLM
+ ↓
+Wrong tool
+ ↓
+Wrong parameters
+ ↓
+External API failure
+ ↓
+Retry
+ ↓
+Duplicate operation
+```
+
+Therefore combine:
+
+```text
+Idempotency
++
+Timeouts
++
+Retries
++
+Circuit breakers
++
+Durable execution
++
+Tracing
++
+Evaluation
++
+Human approval
+```
+
+Temporal explicitly positions durable execution for AI agents, tool use and long-running AI workflows.
+
+---
+
+# 2026 Tool & Framework Map
+
+| Problem          | Good Options                                       |
+| ---------------- | -------------------------------------------------- |
+| Frontend         | Next.js, React, Angular, Vue                       |
+| Mobile           | React Native, Flutter, SwiftUI                     |
+| Backend          | FastAPI, Django, NestJS, Spring Boot, ASP.NET Core |
+| API              | REST, GraphQL, gRPC                                |
+| Database         | PostgreSQL, MySQL, SQL Server                      |
+| NoSQL            | DynamoDB, MongoDB, Cassandra, ScyllaDB             |
+| Cache            | Redis, Valkey, Memcached                           |
+| Search           | OpenSearch, Elasticsearch, Typesense               |
+| Vector Search    | pgvector, Qdrant, Weaviate, Milvus                 |
+| Queue            | SQS, RabbitMQ, NATS, Azure Service Bus             |
+| Streaming        | Kafka, Redpanda, Pulsar                            |
+| Object Storage   | S3, Azure Blob, GCS, R2, MinIO                     |
+| CDN              | Cloudflare, CloudFront, Fastly                     |
+| Reverse Proxy    | NGINX, Envoy, HAProxy, Traefik                     |
+| API Gateway      | Kong, Envoy Gateway, AWS API Gateway, Azure APIM   |
+| Containers       | Docker, Podman                                     |
+| Orchestration    | Kubernetes, ECS, Cloud Run, Container Apps         |
+| IaC              | Terraform, OpenTofu, Pulumi, CDK, Bicep            |
+| CI/CD            | GitHub Actions, GitLab CI, Argo CD, Flux           |
+| Observability    | OpenTelemetry, Prometheus, Grafana, Loki, Tempo    |
+| Workflow         | Temporal, Azure Durable Functions                  |
+| Feature Flags    | OpenFeature, LaunchDarkly, Unleash                 |
+| Secrets          | Vault, AWS Secrets Manager, Azure Key Vault        |
+| Identity         | Auth0, Keycloak, Clerk, Cognito, Entra ID          |
+| AI Gateway       | LiteLLM, Portkey, OpenRouter                       |
+| AI Orchestration | LangGraph, OpenAI Agents SDK, Semantic Kernel      |
+| AI Evaluation    | Ragas, DeepEval, Braintrust, Phoenix               |
+| AI Tracing       | OpenTelemetry, Phoenix, LangSmith                  |
+| Vector DB        | pgvector, Qdrant, Weaviate                         |
+| Data Pipelines   | Airflow, Dagster, Prefect                          |
+| Analytics        | ClickHouse, BigQuery, Snowflake, DuckDB            |
+| Feature Flags    | LaunchDarkly, Unleash                              |
+| Security         | Cloudflare, WAFs, OPA, Falco                       |
+| Policy           | Open Policy Agent                                  |
+| Runtime Security | Falco                                              |
+| Secrets          | Vault, cloud-native secret managers                |
+
+---
+
+# Architecture Patterns
+
+## Pattern 1 — Simple MVP
+
+Start here.
+
+```mermaid
+flowchart LR
+    USER[User] --> CDN[CDN]
+    CDN --> APP[Application]
+    APP --> DB[(PostgreSQL)]
+    APP --> OBJ[(Object Storage)]
+```
+
+Example stack:
+
+```text
+Next.js
++
+FastAPI
++
+PostgreSQL
++
+S3
++
+Cloudflare
+```
+
+---
+
+# Pattern 2 — Production Modular Monolith
+
+```mermaid
+flowchart TD
+    CLIENT[Clients] --> APP[Modular Application]
+
+    APP --> AUTH[Auth Module]
+    APP --> USERS[Users Module]
+    APP --> ORDERS[Orders Module]
+    APP --> PAYMENTS[Payments Module]
+    APP --> SEARCH[Search Module]
+
+    APP --> DB[(PostgreSQL)]
+    APP --> CACHE[(Redis)]
+    APP --> QUEUE[Queue]
+```
+
+This is often the best architecture for an early product.
+
+---
+
+# Pattern 3 — Microservices
+
+```mermaid
+flowchart TD
+    CLIENT[Clients] --> GW[API Gateway]
+
+    GW --> USER[User Service]
+    GW --> ORDER[Order Service]
+    GW --> PAYMENT[Payment Service]
+    GW --> SEARCH[Search Service]
+
+    USER --> UDB[(User DB)]
+    ORDER --> ODB[(Order DB)]
+    PAYMENT --> PDB[(Payment DB)]
+    SEARCH --> SDB[(Search Index)]
+
+    ORDER --> BUS[Event Bus]
+    BUS --> PAYMENT
+    BUS --> NOTIFY[Notification Service]
+```
+
+Use when organisational and scaling requirements justify the complexity.
+
+---
+
+# Pattern 4 — Event-Driven
+
+```mermaid
+flowchart LR
+    API[API] --> SERVICE[Service]
+    SERVICE --> EVENT[Event Bus]
+
+    EVENT --> A[Consumer A]
+    EVENT --> B[Consumer B]
+    EVENT --> C[Consumer C]
+    EVENT --> D[Consumer D]
+```
+
+Useful when:
+
+* Many consumers need the same event
+* Processing is asynchronous
+* Services need decoupling
+* Event history matters
+
+---
+
+# Pattern 5 — AI Agent Platform
+
+```mermaid
+flowchart TD
+    USER[User] --> API[API]
+
+    API --> AUTH[Identity]
+    API --> AGENT[Agent Runtime]
+
+    AGENT --> ROUTER[Model Router]
+
+    ROUTER --> LLM1[Fast Model]
+    ROUTER --> LLM2[Reasoning Model]
+
+    AGENT --> TOOL[Tool Registry]
+    AGENT --> RAG[RAG]
+    AGENT --> MEM[Memory]
+
+    RAG --> VECTOR[(Vector Store)]
+    MEM --> DB[(PostgreSQL)]
+
+    TOOL --> EXT[External APIs]
+
+    AGENT --> WORKFLOW[Durable Workflow]
+    WORKFLOW --> QUEUE[Queue]
+
+    AGENT --> OTEL[OpenTelemetry]
+```
+
+---
+
+# Reliability Engineering
+
+A production system should explicitly define failure handling.
+
+## Failure Matrix
+
+| Failure              | Detection       | Response             |
+| -------------------- | --------------- | -------------------- |
+| API timeout          | Metrics         | Retry                |
+| DB unavailable       | Health check    | Failover             |
+| Queue failure        | Broker metrics  | Retry                |
+| Worker crash         | Heartbeat       | Restart              |
+| External API failure | Tracing         | Circuit breaker      |
+| Duplicate request    | Idempotency key | Ignore/replay result |
+| Message poison       | Retry count     | DLQ                  |
+| Region failure       | Health checks   | Failover             |
+| Cache failure        | Cache metrics   | DB fallback          |
+| Model failure        | AI gateway      | Model fallback       |
+
+---
+
+# The Reliability Stack
+
+```text
+Timeouts
+   ↓
+Retries
+   ↓
+Exponential Backoff
+   ↓
+Jitter
+   ↓
+Circuit Breaker
+   ↓
+Bulkheads
+   ↓
+Fallback
+   ↓
+Dead Letter Queue
+   ↓
+Alerting
+```
+
+---
+
+# Security Architecture
+
+Security should exist at every layer.
+
+```mermaid
+flowchart TD
+    USER[User] --> WAF[WAF]
+    WAF --> AUTH[Authentication]
+    AUTH --> AUTHZ[Authorization]
+    AUTHZ --> API[API]
+
+    API --> DB[(Database)]
+    API --> OBJ[(Object Storage)]
+
+    DB --> ENC[Encryption]
+    OBJ --> ENC2[Encryption]
+
+    API --> AUDIT[Audit Logs]
+```
+
+Important concepts:
+
+* TLS
+* OAuth 2.0
+* OpenID Connect
+* JWT
+* RBAC
+* ABAC
+* Secrets management
+* Encryption at rest
+* Encryption in transit
+* WAF
+* DDoS protection
+* Audit logs
+* Least privilege
+* Network segmentation
+* Dependency scanning
+* Supply-chain security
+
+---
+
+# Data Architecture
+
+A mature system often has several types of storage:
+
+```mermaid
+flowchart TD
+    APP[Application]
+
+    APP --> SQL[(Transactional DB)]
+    APP --> CACHE[(Cache)]
+    APP --> SEARCH[(Search)]
+    APP --> OBJECT[(Object Storage)]
+    APP --> STREAM[Event Stream]
+
+    STREAM --> WAREHOUSE[(Data Warehouse)]
+    STREAM --> LAKE[(Data Lake)]
+
+    SEARCH --> USERSEARCH[User Search]
+    SQL --> TRANSACTIONS[Transactions]
+    OBJECT --> FILES[Files]
+    WAREHOUSE --> BI[Analytics]
+```
+
+Use each system for the problem it is good at.
+
+---
+
+# CQRS
+
+Command Query Responsibility Segregation separates writes and reads.
+
+```mermaid
+flowchart LR
+    COMMAND[Commands] --> WRITE[Write Model]
+    WRITE --> DB[(Primary DB)]
+
+    DB --> READMODEL[Read Model]
+    READMODEL --> QUERY[Queries]
+```
+
+Useful when:
+
+* Read and write patterns are very different
+* Read performance needs independent optimisation
+* Event-driven architecture exists
+
+Don't use it just because it sounds advanced.
+
+---
+
+# Event Sourcing
+
+Instead of storing only current state:
+
+```text
+Account Balance = £500
+```
+
+store events:
+
+```text
+AccountCreated
+MoneyDeposited £1000
+MoneyWithdrawn £500
+```
+
+Current state can be reconstructed from events.
+
+Benefits:
+
+* Complete history
+* Auditability
+* Replay
+* Temporal reasoning
+
+Costs:
+
+* Complexity
+* Event schema evolution
+* Storage
+* Query complexity
+
+---
+
+# Scaling Decision Tree
+
+```mermaid
+flowchart TD
+
+    START[System is slow]
+
+    START --> APP{Application bottleneck?}
+
+    APP -->|Yes| CACHE[Add caching]
+    APP -->|No| DB{Database bottleneck?}
+
+    DB -->|Reads| INDEX[Indexing]
+    DB -->|Reads| REPLICA[Read replicas]
+    DB -->|Writes| SCALEDB[Scale DB]
+    DB -->|Huge dataset| SHARD[Sharding]
+
+    START --> TRAFFIC{Traffic bottleneck?}
+
+    TRAFFIC -->|Yes| LB[Load balancing]
+    LB --> HORIZONTAL[Horizontal scaling]
+
+    START --> NETWORK{Network bottleneck?}
+
+    NETWORK --> CDN[CDN]
+    CDN --> EDGE[Edge processing]
+
+    START --> WORK{Long-running work?}
+
+    WORK --> QUEUE[Queue]
+    QUEUE --> WORKERS[Workers]
+
+    START --> FAILURE{Frequent failures?}
+
+    FAILURE --> RETRY[Retry + Backoff]
+    FAILURE --> CB[Circuit Breaker]
+    FAILURE --> DLQ[Dead Letter Queue]
+
+    START --> GLOBAL{Global users?}
+
+    GLOBAL --> REGION[Multi-region]
+```
+
+---
+
+# MVP → Production Evolution
+
+Do not build the final architecture on day one.
+
+## Stage 1 — MVP
+
+```text
+Frontend
+   ↓
+Backend
+   ↓
+PostgreSQL
+```
+
+Add:
+
+```text
+Object Storage
+Authentication
+Basic logging
+```
+
+---
+
+## Stage 2 — Early Production
+
+```text
+CDN
++
+Load Balancer
++
+Multiple API instances
++
+Redis
++
+PostgreSQL backups
+```
+
+---
+
+## Stage 3 — Growing System
+
+Add only when needed:
+
+```text
+Read replicas
+Queues
+Workers
+Search engine
+Observability
+Rate limiting
+```
+
+---
+
+## Stage 4 — Large Scale
+
+Potentially:
+
+```text
+Multi-region
+Sharding
+Event streaming
+Microservices
+Service mesh
+Advanced disaster recovery
+Dedicated data platform
+```
+
+---
+
+# Architecture Evolution
+
+```mermaid
+flowchart LR
+    MVP[MVP\nMonolith] --> PROD[Production\nModular Monolith]
+    PROD --> SCALE[Scale\nCache + Queue + Replicas]
+    SCALE --> DIST[Distributed\nServices]
+    DIST --> GLOBAL[Global\nMulti-Region]
+```
+
+The important principle:
+
+> **Complexity should be earned by a real requirement.**
+
+---
+
+# System Design Checklist
+
+Before implementing any major system, answer:
+
+## Requirements
+
+* [ ] What are the functional requirements?
+* [ ] What are the non-functional requirements?
+* [ ] How many users?
+* [ ] How many requests per second?
+* [ ] How much data?
+* [ ] How fast must responses be?
+* [ ] What availability is required?
+* [ ] What data must never be lost?
+
+## API
+
+* [ ] REST / GraphQL / gRPC?
+* [ ] Authentication?
+* [ ] Authorization?
+* [ ] Rate limiting?
+* [ ] Versioning?
+* [ ] Idempotency?
+* [ ] Pagination?
+* [ ] Error format?
+
+## Database
+
+* [ ] SQL or NoSQL?
+* [ ] Indexes?
+* [ ] Transactions?
+* [ ] Replication?
+* [ ] Partitioning?
+* [ ] Backup?
+* [ ] Recovery?
+* [ ] Data retention?
+
+## Performance
+
+* [ ] Caching?
+* [ ] CDN?
+* [ ] Database optimisation?
+* [ ] Connection pooling?
+* [ ] Async processing?
+* [ ] Load balancing?
+
+## Reliability
+
+* [ ] Timeouts?
+* [ ] Retries?
+* [ ] Backoff?
+* [ ] Jitter?
+* [ ] Circuit breakers?
+* [ ] DLQ?
+* [ ] Failover?
+* [ ] Disaster recovery?
+
+## Security
+
+* [ ] TLS?
+* [ ] Identity?
+* [ ] RBAC?
+* [ ] Secrets?
+* [ ] Encryption?
+* [ ] WAF?
+* [ ] Audit logs?
+* [ ] Dependency scanning?
+
+## Observability
+
+* [ ] Logs?
+* [ ] Metrics?
+* [ ] Traces?
+* [ ] SLI?
+* [ ] SLO?
+* [ ] Alerts?
+* [ ] Dashboards?
+* [ ] Correlation IDs?
+
+## Operations
+
+* [ ] CI/CD?
+* [ ] Infrastructure as Code?
+* [ ] Automated rollback?
+* [ ] Health checks?
+* [ ] Feature flags?
+* [ ] Disaster recovery?
+* [ ] Cost monitoring?
+
+## AI Systems
+
+* [ ] Model routing?
+* [ ] Prompt/version management?
+* [ ] RAG?
+* [ ] Vector search?
+* [ ] Tool permissions?
+* [ ] Evaluation?
+* [ ] Cost tracking?
+* [ ] Token limits?
+* [ ] AI observability?
+* [ ] Guardrails?
+* [ ] Human approval?
+* [ ] Durable execution?
+
+---
+
+# The Core Mental Model
+
+The 30 concepts can ultimately be compressed into this:
+
+```mermaid
+flowchart TD
+
+    REQUIREMENTS[Requirements]
+
+    REQUIREMENTS --> NETWORK[Network]
+    REQUIREMENTS --> COMPUTE[Compute]
+    REQUIREMENTS --> DATA[Data]
+    REQUIREMENTS --> ASYNC[Async Processing]
+    REQUIREMENTS --> SECURITY[Security]
+    REQUIREMENTS --> RELIABILITY[Reliability]
+    REQUIREMENTS --> OBS[Observability]
+
+    NETWORK --> DNS
+    NETWORK --> CDN
+    NETWORK --> LB[Load Balancer]
+    NETWORK --> API[API]
+
+    COMPUTE --> SCALE[Horizontal Scaling]
+    COMPUTE --> CONTAINERS[Containers]
+    COMPUTE --> K8S[Kubernetes]
+
+    DATA --> DB[Database]
+    DATA --> CACHE[Cache]
+    DATA --> STORAGE[Object Storage]
+    DATA --> SEARCH[Search]
+
+    ASYNC --> QUEUE[Queue]
+    ASYNC --> EVENTS[Events]
+    ASYNC --> WORKFLOW[Durable Workflow]
+
+    SECURITY --> AUTH[Identity]
+    SECURITY --> WAF[WAF]
+    SECURITY --> SECRETS[Secrets]
+
+    RELIABILITY --> RETRIES[Retries]
+    RELIABILITY --> CB[Circuit Breaker]
+    RELIABILITY --> DR[Disaster Recovery]
+
+    OBS --> OTEL[OpenTelemetry]
+    OBS --> METRICS[Metrics]
+    OBS --> TRACING[Tracing]
+```
+
+---
+
+# Final Principle
+
+The goal of system design isn't:
+
+> "Use Kubernetes, Kafka, Redis and microservices."
+
+The goal is:
+
+> **Choose the simplest architecture that satisfies today's requirements while leaving clean escape routes for tomorrow's requirements.**
+
+A strong engineer therefore thinks in this order:
+
+```text
+1. Requirements
+        ↓
+2. Constraints
+        ↓
+3. Traffic / Scale
+        ↓
+4. Data model
+        ↓
+5. API contracts
+        ↓
+6. Architecture
+        ↓
+7. Failure modes
+        ↓
+8. Security
+        ↓
+9. Observability
+        ↓
+10. Cost
+        ↓
+11. Evolution path
+```
+
+And the most important production question is:
+
+```text
+"What happens when this component fails?"
+```
+
+If the answer is:
+
+```text
+"The entire system goes down."
+```
+
+you have found the next system-design problem to solve.
+
+---
+
+## 2026 Takeaway
+
+The original 30 concepts remain the foundation.
+
+Modern system design adds:
+
+```text
+Cloud-native
++
+Containers
++
+Infrastructure as Code
++
+Event-driven architecture
++
+Durable workflows
++
+Observability
++
+Zero-trust security
++
+AI/LLM systems
++
+Agent orchestration
++
+Evaluation
++
+Multi-region
++
+FinOps
+```
+
+The resulting mindset is:
+
+> **Design for change, design for failure, measure everything important, and introduce complexity only when the requirements justify it.**
